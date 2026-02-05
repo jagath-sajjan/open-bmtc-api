@@ -1,6 +1,5 @@
 // trying ?bbox
 import { NextRequest } from "next/server";
-import { features } from "process";
 
 export async function GET(req: NextRequest) {
     const bboxParam = req.nextUrl.searchParams.get("bbox"); // gets params

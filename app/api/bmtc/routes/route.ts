@@ -1,6 +1,4 @@
 import { NextRequest } from "next/server";
-import { features } from "node:process";
-import { resumeToPipeableStream } from "react-dom/server";
 
 export async function GET(req: NextRequest) {
     const bboxParam = req.nextUrl.searchParams.get("bbox");
