@@ -4,4 +4,4 @@
 
 ## DOCS AT https://open-bmtc-api.vercel.app/
 
-![Land Image](land.png)
+![Land](./public/land.png)
