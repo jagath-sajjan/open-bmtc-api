@@ -3,3 +3,5 @@
 ## TRIED HTTP CACHE AND WORKED SO IMPLEMENTED BBOX PARAMS
 
 ## DOCS AT https://open-bmtc-api.vercel.app/
+
+![Land Image](land.png)
