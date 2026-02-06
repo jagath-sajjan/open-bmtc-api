@@ -2,6 +2,17 @@
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
+
+    const routeId = req.nextUrl.searchParams.get("routeId");
+    const normalizedRouteId = routeId
+    ? routeId
+        .toUpperCase()
+        .trim()
+        .replace(/\s+/g, "")
+        .replace(/^(\d+)([A-Z])$/, "$1-$2")
+    : null;
+
+
     const bboxParam = req.nextUrl.searchParams.get("bbox"); // gets params
 
     const res = await fetch(process.env.BMTC_STOPS_URL!, {
@@ -13,35 +24,48 @@ export async function GET(req: NextRequest) {
     }
 
     const geojson = await res.json();
+    let features = geojson.features;
 
-    // no bbox fallback dump
-    if (!bboxParam) {
-        return Response.json(geojson, {
-            headers: {
-                "Cache-Control": "public, max-age=3600"
-            }
-        });
+    if (normalizedRouteId) {
+        features = features.filter(
+            (f: any) => Array.isArray(f.properties?.route_list) && f.properties.route_list.map((r:string) => r.toUpperCase()).includes(normalizedRouteId)
+        );
     }
+
+    if (!bboxParam) {
+        return Response.json(
+            {
+                type: "FeatureCollection",
+                features
+            },
+            {
+                headers: {
+                    "Cache-Control": "public, max-age=3600"
+                }
+            }
+        );
+    }
+
     const [minLng, minLat, maxLng, maxLat] = bboxParam.split(",").map(Number);
 
     if ([minLng, minLat, maxLng, maxLat].some(Number.isNaN)) {
         return new Response("Invaild bbox", { status: 400 });
     }
 
-    const filteredFeatures = geojson.features.filter((feature: any) => {
+    features = features.filter((feature: any) => {
         const [lng, lat] = feature.geometry.coordinates;
         return (
             lng >= minLng &&
             lng <= maxLng &&
             lat >= minLat &&
             lat <= maxLat
-        ); 
+        )
     });
 
     return Response.json(
         {
-            type: "FilterdCollection",
-            features: filteredFeatures
+            type: "FeatureCollection",
+            features
         },
         {
             headers: {
