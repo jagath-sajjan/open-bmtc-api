@@ -106,7 +106,7 @@ export default function Home() {
                 <div className="divider" />
 
                 <p className="footer">
-                    Built For Maps. Built For Speed. ~Jagath Sajjan 💖
+                    Built For Maps. Built For Speed. ~Jagath Sajjan 💖 [Data Collected By Ventor]
                 </p>
 
             </section>

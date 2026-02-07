@@ -1,6 +1,8 @@
 // trying ?bbox
 import { NextRequest } from "next/server";
 
+export const runtime = "edge";
+
 export async function GET(req: NextRequest) {
 
     const routeId = req.nextUrl.searchParams.get("routeId");

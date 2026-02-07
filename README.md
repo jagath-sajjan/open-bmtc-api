@@ -1,7 +1,7 @@
-## THE NORM REVALIDATE AINT WORKING CAUSE GEOJSON BLOB IS BIGGER THAN 2MB WILL BE FIXED NEXT COMMIT
-
-## TRIED HTTP CACHE AND WORKED SO IMPLEMENTED BBOX PARAMS
-
 ## DOCS AT https://open-bmtc-api.vercel.app/
 
 ![Land](./public/land.png)
+
+## NEW v2 Implementing Database Next Commit Faster Api:
+
+![Mongo DB](./public/mongo.png)
