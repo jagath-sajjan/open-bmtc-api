@@ -103,6 +103,20 @@ export default function Home() {
                     </li>
                 </ul>
 
+                <h2>Info And Stats</h2>
+                <ul className="list">
+                    <li>
+                        <code onClick={() => openEndpoint("/api/meta")} style={{ cursor: "pointer"}}>
+                            /api/meta
+                        </code>
+                    </li>
+                    <li>
+                        <code onClick={() => openEndpoint("/api/health")} style={{ cursor: "pointer"}}>
+                            /api/health
+                        </code>
+                    </li>
+                </ul>
+
                 <div className="divider" />
 
                 <p className="footer">

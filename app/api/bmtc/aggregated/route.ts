@@ -1,127 +1,129 @@
 import { NextRequest } from "next/server";
+import clientPromise from "@/lib/mongo";
+
+export const runtime = "nodejs";
 
 // helper func
-function simplifyLineString(
-    coorndinates: number[][],
-    tolerance: number
-) {
-    if (coorndinates.length <= 2) return coorndinates;
+function simplifyLineString(coordinates: number[][], tolerance: number) {
+  if (coordinates.length <= 2) return coordinates;
 
-    const simplified: number[][] = [coorndinates[0]];
-    let lastKept = coorndinates[0];
+  const simplified: number[][] = [coordinates[0]];
+  let lastKept = coordinates[0];
 
-    for (let i = 1; i < coorndinates.length - 1; i++) {
-        const [lng, lat] = coorndinates[i];
-        const [lastLng, lastLat] = lastKept;
+  for (let i = 1; i < coordinates.length - 1; i++) {
+    const [lng, lat] = coordinates[i];
+    const [lastLng, lastLat] = lastKept;
 
-        const dist = Math.abs(lng - lastLng) + Math.abs(lat - lastLat);
-
-        if (dist >= tolerance) {
-            simplified.push(coorndinates[i]);
-            lastKept = coorndinates[i];
-        }
+    if (Math.abs(lng - lastLng) + Math.abs(lat - lastLat) >= tolerance) {
+      simplified.push(coordinates[i]);
+      lastKept = coordinates[i];
     }
-    simplified.push(coorndinates[coorndinates.length -1]);
-    return simplified; 
+  }
+
+  simplified.push(coordinates[coordinates.length - 1]);
+  return simplified;
 }
 
 export async function GET(req: NextRequest) {
+  const routeId = req.nextUrl.searchParams.get("routeId");
+  const simplifyParam = req.nextUrl.searchParams.get("simplify");
+  const simplifyTolerance = simplifyParam ? Number(simplifyParam) : null;
+  const bboxParam = req.nextUrl.searchParams.get("bbox");
 
-    const routeId = req.nextUrl.searchParams.get("routeId");
-    const simplifyParam = req.nextUrl.searchParams.get("simplify");
-    const simplifyTolerance = simplifyParam ? Number(simplifyParam): null;
-    const normalizedRouteId = routeId
+  const normalizedRouteId = routeId
     ? routeId
         .toUpperCase()
         .trim()
         .replace(/\s+/g, "")
         .replace(/^(\d+)([A-Z])$/, "$1-$2")
     : null;
-    // fixes diff issue now 258c = 258-C 
 
-    const bboxParam = req.nextUrl.searchParams.get("bbox"); // gets params
+  const client = await clientPromise;
+  const db = client.db("bmtc");
+  const collection = db.collection("aggregated");
 
-    const res = await fetch(process.env.BMTC_AGGREGATED_URL!, {
-        cache: "no-store" // http cachin
-    })
+  const query: any = {};
 
-    if (!res.ok) {
-        return new Response("Failed To Fetch AggStops", { status: 500 });
-    }
+  if (normalizedRouteId) {
+    query.route_list = normalizedRouteId;
+  }
 
-    // prase geojson
-    const geojson = await res.json();
-    let features = geojson.features;
-
-    if (normalizedRouteId) {
-        features = features.filter(
-            (f: any) => Array.isArray(f.properties?.route_list) && f.properties.route_list.map((r:string) => r.toUpperCase()).includes(normalizedRouteId)
-        );
-    } 
-
-    // no bbox fallback dump
-    if (!bboxParam) {
-        return Response.json(
-            {
-                type: "FeatureCollection",
-                features
-            },
-            {
-                headers: {
-                    "Cache-Control": "public, max-age=3600"
-                }
-            }
-        );
-    }
-
+  if (bboxParam) {
     const [minLng, minLat, maxLng, maxLat] = bboxParam.split(",").map(Number);
 
-    // validate bbox
-    // if value NaN, bbox invalid
     if ([minLng, minLat, maxLng, maxLat].some(Number.isNaN)) {
-        return new Response("Invaild bbox", { status: 400 });
+      return new Response("Invalid bbox", { status: 400 });
     }
 
-    // filtering geojson
-    features = features.filter((feature: any) => {
-        const [lng, lat] = feature.geometry.coordinates;
-        return (
-            lng >= minLng &&
-            lng <= maxLng &&
-            lat >= minLat &&
-            lat <= maxLat
-        )
-    });
+    query.geometry = {
+      $geoWithin: {
+        $box: [
+          [minLng, minLat],
+          [maxLng, maxLat]
+        ]
+      }
+    };
+  }
 
-    if (simplifyTolerance) {
-        features = features.map((feature: any) => {
-            if (feature.geometry.type !== "LineString") return feature;
+  const docs = await collection
+    .find(query, {
+      projection: {
+        _id: 0,
+        name: 1,
+        geometry: 1,
+        route_list: 1,
+        route_count: 1
+      }
+    })
+    .limit(500)
+    .toArray();
 
-            return {
-                ...feature,
-                geometry: {
-                    ...feature.geometry,
-                    coordinates: simplifyLineString(
-                        feature.geometry.coordinates, simplifyTolerance
-                    )
-                }
-            };
-        });
+  let features = docs.map((doc: any) => ({
+    type: "Feature",
+    geometry: doc.geometry,
+    properties: {
+      name: doc.name,
+      route_count: doc.route_count,
+      route_list: doc.route_list
     }
+  }));
 
-    // filtered features return
-    return Response.json(
-        {
-            type: "FeatureCollection",
-            features
-        },
-        {
-            headers: {
-                "Cache-Control": "public, max-age=3600"
+  if (simplifyTolerance) {
+    features = features.map((f: any) =>
+      f.geometry.type !== "LineString"
+        ? f
+        : {
+            ...f,
+            geometry: {
+              ...f.geometry,
+              coordinates: simplifyLineString(
+                f.geometry.coordinates,
+                simplifyTolerance
+              )
             }
-        }
+          }
     );
+  }
+
+  return Response.json(
+    {
+      type: "FeatureCollection",
+      features,
+      meta: {
+        count: features.length,
+        routeId: normalizedRouteId,
+        bbox: bboxParam,
+        simplified: !!simplifyTolerance
+      }
+    },
+    {
+      headers: {
+        "Cache-Control": "public, max-age=3600"
+      }
+    }
+  );
 }
+
 
 // export async function GET() {
 //     const res = await fetch(process.env.BMTC_AGGREGATED_URL!, {

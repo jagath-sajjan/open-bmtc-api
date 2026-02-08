@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
+import clientPromise from "@/lib/mongo";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 function simplifyLineString(
     coornidates: number[][],
@@ -31,64 +32,74 @@ export async function GET(req: NextRequest) {
     const routeId = req.nextUrl.searchParams.get("routeId");
     const simplifyParam = req.nextUrl.searchParams.get("simplify");
     const simplifyTolerance = simplifyParam ? Number(simplifyParam): null;
+
     const normalizedRouteId = routeId
-    ? routeId
-        .toUpperCase()
-        .trim()
-        .replace(/\s+/g, "")
-        .replace(/^(\d+)([A-Z])$/, "$1-$2")
-    : null;     
+        ? routeId
+            .toUpperCase()
+            .trim()
+            .replace(/\s+/g, "")
+            .replace(/^(\d+)([A-Z])$/, "$1-$2")
+        : null;     
 
     const bboxParam = req.nextUrl.searchParams.get("bbox");
 
-    const res = await fetch(process.env.BMTC_ROUTES_URL!, {
-        cache: "no-store"
-    })
+    const client = await clientPromise;
+    const db = client.db("bmtc");
+    const collection = db.collection("routes");
 
-    if (!res.ok) {
-        return new Response("Failed TO Fetch Routes", { status: 500 });
-    }
-
-    const geojson = await res.json();
-    let features = geojson.features;
+    const query: any = {};
 
     if (normalizedRouteId){
-        features = features.filter(
-            (f: any) => f.properties?.route_id?.toUpperCase() === normalizedRouteId
-        );
+        query.id = normalizedRouteId;
     }
 
-    if (!bboxParam) {
-        return Response.json(
-            {
-                type: "FeatureCollection",
-                features
-            },
-            {
-                headers: {
-                    "Cache-Control": "public, max-age=3600"
-                }
+    if (bboxParam) {
+        const [minLng, minLat, maxLng, maxLat] = bboxParam.split(",").map(Number);
+
+        if ([minLng, minLat, maxLng, maxLat].some(Number.isNaN)) {
+            return new Response("Invalid bbox", { status: 400 });
+        }
+
+        query.geometry = {
+            $geoWithin: {
+                $box: [
+                    [minLng, minLat],
+                    [maxLng, maxLat]
+                ]
             }
-        );
+        };
     }
 
-    const [minLng, minLat, maxLng, maxLat] = bboxParam.split(",").map(Number);
+    const docs = await collection.find(
+        query,
+        {
+            projection: {
+                _id: 0,
+                geometry: 1,
+                name: 1,
+                full_name: 1,
+                trip_count: 1,
+                stop_count: 1,
+                id: 1,
+                direction_id: 1
+            }
+        }
+    )
+    .limit(200)
+    .toArray();
 
-    if ([minLng, minLat, maxLng, maxLat].some(Number.isNaN)) {
-        return new Response("Invalid bbox", { status: 400 });
-    }
-
-    features = features.filter((feature: any) => {
-        if (feature.geometry.type !== "LineString") return false;
-
-        return feature.geometry.coordinates.some(
-            ([lng, lat]: number []) =>
-                lng >= minLng &&
-                lng <= maxLng &&
-                lat >= minLat &&
-                lat <= maxLat
-        );
-    });
+    let features = docs.map((doc: any) => ({
+        type: "Feature",
+        geometry: doc.geometry,
+        properties: {
+            name: doc.name,
+            full_name: doc.full_name,
+            trip_count: doc.trip_count,
+            stop_count: doc.stop_count,
+            id: doc.id,
+            direction_id: doc.direction_id
+        }
+    }));
 
     if (simplifyTolerance) {
         features = features.map((feature: any) => {
@@ -113,11 +124,13 @@ export async function GET(req: NextRequest) {
         },
         {
             headers: {
-                "Cache-Control": "public,  max-age=3600"
+                "Cache-Control": "public, max-age=3600"
             }
         }
     );
 }
+
+
 
 // export async function GET() {
 //     const res = await fetch(process.env.BMTC_ROUTES_URL !, {

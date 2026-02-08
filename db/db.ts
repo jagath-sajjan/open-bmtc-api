@@ -115,6 +115,10 @@ async function updateDatabase() {
                 await routesCollection.insertMany(batch);
                 console.log(`Inserted batch ${Math.floor(i / batchSize) + 1}: ${batch.length} routes`);
             }
+
+            // geo index for route bbox queries
+            await routesCollection.createIndex({ geometry: '2dsphere' });
+
             console.log(`Total inserted: ${routes.length} routes`);
         }
 
@@ -138,6 +142,13 @@ async function updateDatabase() {
                 await aggregatedCollection.insertMany(batch);
                 console.log(`Inserted batch ${Math.floor(i / batchSize) + 1}: ${batch.length} aggregated records`);
             }
+
+            // geo index for bbox queries
+            await aggregatedCollection.createIndex({ geometry: '2dsphere' });
+
+            // routeId filtering speedup
+            await aggregatedCollection.createIndex({ route_list: 1 });
+
             console.log(`Total inserted: ${aggregated.length} aggregated records`);
         }
 
