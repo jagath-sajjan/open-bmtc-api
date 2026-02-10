@@ -108,7 +108,7 @@ Returns API + database status. Useful for uptime monitoring.
 
 ## Data & Architecture
 
-- MongoDB-backed (GeoJSON stored as documents)
+- MongoDB backed (GeoJSON/GTFS stored as documents to update DB)
 - 2dsphere indexes for fast spatial queries
 - No external GeoJSON fetch at runtime
 - Cached responses for app-safe usage
